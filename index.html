@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weekly Sales Report</title>
+<style>
+body{font:1rem system-ui;max-width:48rem;margin:3rem auto;padding:0 1rem;background:#f3f7fb;color:#17263c}
+main{background:white;padding:2rem;border-radius:1rem} textarea{width:100%;box-sizing:border-box} button{padding:.6rem;margin-top:.5rem} th,td{text-align:left;padding:.5rem 1rem .5rem 0} #error{color:#a11}
+</style>
+<main>
+<h1>Weekly Sales Report</h1>
+<p>Paste CSV rows with a date, product name, and sale amount in USD. Dates use YYYY-MM-DD. Weeks start Monday.</p>
+<label for="sales">Sales CSV</label>
+<textarea id="sales" rows="8" spellcheck="false">date,product,amount
+2026-11-02,Notebook,25.00
+2026-11-03,Pen,12.50
+2026-11-09,Notebook,30.00</textarea>
+<button id="generate">Generate report</button>
+<p id="error" role="alert"></p>
+<table hidden id="report"><caption>Weekly sales totals</caption><thead><tr><th scope="col">Week starting</th><th scope="col">Sales</th><th scope="col">Revenue</th></tr></thead><tbody></tbody></table>
+<p>Data is processed in this browser.</p>
+</main>
+<script>
+const sales = document.querySelector('#sales');
+const report = document.querySelector('#report');
+const error = document.querySelector('#error');
+const money = new Intl.NumberFormat('en-US', {style:'currency', currency:'USD'});
+document.querySelector('#generate').onclick = () => {
+  report.hidden = true;
+  error.textContent = '';
+  try {
+    const [header, ...lines] = sales.value.trim().split(/\r?\n/);
+    if (header.toLowerCase() !== 'date,product,amount' || !lines.length) {
+      throw new Error('Include the sample header and at least one sale.');
+    }
+    const weeks = new Map();
+    lines.forEach((line, index) => {
+      if (!line.trim()) return;
+      const match = /^(\d{4}-\d{2}-\d{2}),\s*(?:"(?:[^"]|"")*"|[^,"]+)\s*,\s*(\d{1,10})(?:\.(\d{1,2}))?\s*$/.exec(line);
+      const date = new Date(match?.[1] + 'T00:00:00Z');
+      if (!match || !Number.isFinite(+date) || date.toISOString().slice(0,10) !== match[1]) {
+        throw new Error('Check the date, product and USD amount on line ' + (index + 2) + '.');
+      }
+      date.setUTCDate(date.getUTCDate() - (date.getUTCDay() + 6) % 7);
+      const week = date.toISOString().slice(0,10);
+      const totals = weeks.get(week) ?? {count:0, cents:0};
+      totals.count++;
+      totals.cents += Number(match[2]) * 100 + Number((match[3] ?? '').padEnd(2,'0'));
+      if (!Number.isSafeInteger(totals.cents)) throw new Error('Weekly total is too large.');
+      weeks.set(week, totals);
+    });
+    const body = report.tBodies[0];
+    body.replaceChildren();
+    for (const week of [...weeks.keys()].sort()) {
+      const {count, cents} = weeks.get(week);
+      const row = body.insertRow();
+      for (const value of [week, count, money.format(cents / 100)]) row.insertCell().textContent = value;
+    }
+    report.hidden = false;
+  } catch (problem) {
+    error.textContent = problem.message;
+  }
+};
+</script>
+</html>
